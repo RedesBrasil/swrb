@@ -1,0 +1,4 @@
+---
+custom_templates:
+  - name: ciscosw
+    listname: "CiscoSW L2 Switch"

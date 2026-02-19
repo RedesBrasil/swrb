@@ -1,0 +1,14 @@
+---
+type: qemu
+description: Cisco-like L2 Switch (Alpine)
+name: CiscoSW
+cpulimit: 1
+icon: Switch L2.png
+cpu: 1
+ram: 128
+ethernet: 9
+console: telnet
+shutdown: 1
+qemu_arch: x86_64
+qemu_nic: virtio-net-pci
+qemu_options: -machine type=pc,accel=kvm -nographic -serial mon:stdio

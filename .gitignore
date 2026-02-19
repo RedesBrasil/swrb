@@ -1,0 +1,38 @@
+# Imagem QCOW2 (80MB+ binary)
+*.qcow2
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alpine make vm image (submodulo/clone externo)
+alpine-make-vm-image/
+
+# Configs gerados em runtime
+switchcli/configs/running-config
+switchcli/configs/startup-config
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
