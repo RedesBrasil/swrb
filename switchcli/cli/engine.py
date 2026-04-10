@@ -30,7 +30,7 @@ from cli.commands.show import (
     show_lldp_global, show_lldp_interface, show_ip_route,
 )
 from cli.commands.config import (
-    cmd_hostname, cmd_enable_password,
+    cmd_hostname, cmd_enable_password, cmd_username, cmd_no_username,
     cmd_ip_default_gateway, cmd_no_ip_default_gateway,
     cmd_ip_route, cmd_no_ip_route,
     cmd_banner_motd, cmd_no_banner_motd,
@@ -228,7 +228,7 @@ class CLIEngine:
     # ── GLOBAL CONFIG ──────────────────────────────────────────────────────────
     def _dispatch_global_config(self, tokens):
         cmd = match_command(tokens[0], [
-            "hostname", "enable", "vlan", "no",
+            "hostname", "enable", "username", "vlan", "no",
             "interface", "ip", "spanning-tree", "do", "end", "exit",
             "banner", "lldp", "errdisable",
         ])
@@ -243,6 +243,9 @@ class CLIEngine:
             sub = match_command(tokens[1], ["password"])
             if sub == "password":
                 cmd_enable_password(self.config_store, tokens[2:])
+
+        elif cmd == "username":
+            cmd_username(self.config_store, tokens[1:])
 
         elif cmd == "vlan":
             if len(tokens) < 2:
@@ -333,7 +336,7 @@ class CLIEngine:
             return
         cmd = match_command(tokens[0], [
             "vlan", "ip", "interface", "spanning-tree",
-            "banner", "lldp", "errdisable",
+            "banner", "lldp", "errdisable", "username",
         ])
 
         if cmd == "vlan":
@@ -401,6 +404,9 @@ class CLIEngine:
                     sub2 = match_command(tokens[2], ["cause"])
                     if sub2 == "cause":
                         cmd_no_errdisable_recovery_cause(self.config_store, tokens[3:])
+
+        elif cmd == "username":
+            cmd_no_username(self.config_store, tokens[1:])
 
     def _handle_ip_global(self, tokens):
         if not tokens:

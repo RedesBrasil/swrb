@@ -364,6 +364,10 @@ def show_running_config(config_store):
     if config_store.enable_password:
         lines.append(f"enable password {config_store.enable_password}")
         lines.append("!")
+    for uname, uhash in sorted(config_store.local_users.items()):
+        lines.append(f"username {uname} secret 5 {uhash}")
+    if config_store.local_users:
+        lines.append("!")
     if config_store.banner_motd:
         lines.append(f"banner motd #{config_store.banner_motd}#")
         lines.append("!")

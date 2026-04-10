@@ -2,6 +2,7 @@
 Gerencia running-config e startup-config em memoria e disco.
 """
 
+import hashlib
 import json
 import os
 
@@ -139,6 +140,7 @@ class ConfigStore:
     def __init__(self):
         self.hostname = self._load_hostname()
         self.enable_password = None
+        self.local_users = {}              # {username: sha256_hash}
         self.vlans = {1: "default"}
         self.interfaces = {}
         self.svi_interfaces = {}
@@ -209,6 +211,22 @@ class ConfigStore:
         self._deserialize(data)
         return True
 
+    @staticmethod
+    def hash_password(password):
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    def add_user(self, username, password):
+        self.local_users[username] = self.hash_password(password)
+
+    def remove_user(self, username):
+        return self.local_users.pop(username, None) is not None
+
+    def verify_user(self, username, password):
+        hashed = self.local_users.get(username)
+        if hashed is None:
+            return False
+        return hashed == self.hash_password(password)
+
     def add_static_route(self, network, mask, gateway):
         route = StaticRoute(network, mask, gateway)
         for r in self.static_routes:
@@ -228,6 +246,7 @@ class ConfigStore:
         return {
             "hostname": self.hostname,
             "enable_password": self.enable_password,
+            "local_users": dict(self.local_users),
             "vlans": {str(k): v for k, v in self.vlans.items()},
             "interfaces": {str(k): v.to_dict() for k, v in self.interfaces.items()},
             "svi_interfaces": {str(k): v.to_dict() for k, v in self.svi_interfaces.items()},
@@ -247,6 +266,7 @@ class ConfigStore:
     def _deserialize(self, data):
         self.hostname = data.get("hostname", "Switch")
         self.enable_password = data.get("enable_password")
+        self.local_users = dict(data.get("local_users", {}))
         self.vlans = {int(k): v for k, v in data.get("vlans", {}).items()}
         for k, v in data.get("interfaces", {}).items():
             self.interfaces[int(k)] = InterfaceConfig.from_dict(v)

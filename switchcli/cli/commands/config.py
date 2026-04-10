@@ -31,6 +31,39 @@ def cmd_enable_password(config_store, args):
     config_store.enable_password = args[0]
 
 
+def cmd_username(config_store, args):
+    """username <name> password <pw>
+    Cria ou atualiza um usuario local. A senha e armazenada como hash SHA-256.
+    """
+    # Aceita: username <name> password <pw>
+    if len(args) < 3:
+        print("% Incomplete command.")
+        return
+    username = args[0]
+    kw = args[1].lower()
+    if kw not in ("password", "secret"):
+        print("% Invalid input detected at '^' marker.")
+        return
+    password = args[2]
+    if not username or not password:
+        print("% Incomplete command.")
+        return
+    config_store.add_user(username, password)
+    print(f"% User '{username}' configured.")
+
+
+def cmd_no_username(config_store, args):
+    """no username <name>"""
+    if not args:
+        print("% Incomplete command.")
+        return
+    username = args[0]
+    if config_store.remove_user(username):
+        print(f"% User '{username}' removed.")
+    else:
+        print(f"% User '{username}' not found.")
+
+
 def cmd_ip_default_gateway(config_store, args):
     """ip default-gateway <ip>"""
     if not args:

@@ -70,6 +70,7 @@ COMMAND_TREE = {
     "GLOBAL_CONFIG": {
         "hostname": "Set system's network name",
         "enable": {"password": "Assign the privileged level password"},
+        "username": "Define a local user (username <name> password <pw>)",
         "vlan": "VLAN commands",
         "spanning-tree": {
             "mode": {
@@ -93,6 +94,7 @@ COMMAND_TREE = {
             "banner": {"motd": "Remove MOTD banner"},
             "lldp": {"run": "Disable LLDP"},
             "errdisable": {"recovery": {"cause": "Remove errdisable recovery cause"}},
+            "username": "Remove a local user",
         },
         "interface": "Select an interface to configure",
         "banner": {"motd": "Set message-of-the-day banner"},
