@@ -8,8 +8,9 @@ Imagem QEMU de um switch L2 com CLI Cisco-like (estilo Catalyst 2960), construid
 - Abreviacoes de comandos estilo Cisco (`sh vl br`, `conf t`, `int gi0/1`, `wr`)
 - Tab completion e help contextual com `?`
 - VLAN management com bridge VLAN filtering do kernel Linux
+- Gerencia de IP: SVIs (interface VlanX), ip default-gateway
 - STP (802.1D) via kernel built-in
-- Switchport access e trunk (802.1Q tagging)
+- Switchport access e trunk (802.1Q) com controle granular de VLANs permitidas
 - Persistencia de configuracao (write memory / copy running-config startup-config)
 - Banner de boot estilo Cisco 2960
 - Boot em ~6 segundos (com KVM)
@@ -30,125 +31,176 @@ Imagem QEMU de um switch L2 com CLI Cisco-like (estilo Catalyst 2960), construid
 
 ```
 swrb/
-├── switchcli/                # Codigo-fonte do CLI Python
-│   ├── main.py               # Entry point
-│   ├── loader.py             # Carrega startup-config no boot
+├── switchcli/                 # Codigo-fonte do CLI Python
+│   ├── main.py                # Entry point
+│   ├── loader.py              # Carrega startup-config no boot
 │   ├── cli/
-│   │   ├── engine.py         # Maquina de estados (5 modos CLI)
-│   │   ├── parser.py         # Parser de comandos + abreviacoes
-│   │   ├── completer.py      # Tab completion + ? help
-│   │   ├── banner.py         # Banner de boot estilo Cisco
+│   │   ├── engine.py          # Maquina de estados (5 modos CLI)
+│   │   ├── parser.py          # Parser de comandos + abreviacoes
+│   │   ├── completer.py       # Tab completion + ? help
+│   │   ├── banner.py          # Banner de boot estilo Cisco
 │   │   └── commands/
-│   │       ├── show.py       # show vlan, mac, interfaces, running-config
-│   │       ├── config.py     # hostname, enable password
-│   │       ├── interface.py  # switchport mode/access/trunk, shutdown
-│   │       ├── vlan.py       # vlan name
-│   │       └── system.py     # write memory, reload
+│   │       ├── show.py        # Todos os comandos show
+│   │       ├── config.py      # hostname, enable password, ip default-gateway
+│   │       ├── interface.py   # switchport, shutdown, SVI IP
+│   │       ├── vlan.py        # vlan name
+│   │       └── system.py      # write memory, reload
 │   └── backend/
-│       ├── bridge.py         # Mapeamento Cisco <-> Linux
-│       ├── vlan.py           # Gerencia VLANs no kernel
-│       ├── interface.py      # Controle de interfaces
-│       └── config_store.py   # Persistencia de configuracao
-├── eveng/                    # Arquivos para instalacao no EVE-NG
-│   ├── ciscosw.yml           # Template YAML
-│   ├── custom_templates.yml  # Registro de template customizado
-│   └── install-eveng.sh      # Script de instalacao automatizada
-├── configure.sh              # Script de configuracao da imagem Alpine
-└── plano.md                  # Documentacao completa do projeto
+│       ├── bridge.py          # Mapeamento Cisco <-> Linux + interface range
+│       ├── vlan.py            # Gerencia VLANs no kernel
+│       ├── interface.py       # Controle de interfaces fisicas
+│       ├── ip_mgmt.py         # Gerencia de SVIs e rotas (ip link/addr/route)
+│       └── config_store.py    # Persistencia de configuracao
+├── eveng/                     # Arquivos para instalacao no EVE-NG
+│   └── ciscosw.yml            # Template YAML (referencia)
+├── deploy.sh                  # Injeta arquivos Python na imagem via guestfish
+└── configure.sh               # Script de configuracao inicial da imagem Alpine
 ```
 
 ## Comandos Suportados
 
 ### User EXEC (`Switch>`)
-- `enable` - Entrar em modo privilegiado
-- `show vlan brief` - Listar VLANs e portas
-- `show mac address-table` - Tabela MAC
-- `show interfaces status` - Status das portas
-- `show interfaces trunk` - Portas trunk
-- `show running-config` / `show startup-config`
-- `show spanning-tree` / `show version`
+```
+enable                              Entrar em modo privilegiado
+show vlan brief                     Listar VLANs e portas associadas
+show mac address-table              Tabela de MACs aprendidos
+show interfaces status              Status resumido das portas
+show interfaces trunk               Portas trunk e VLANs permitidas
+show ip interface brief             IPs de todas as interfaces (fisicas + SVIs)
+show arp                            Tabela ARP das SVIs
+show running-config                 Configuracao ativa
+show startup-config                 Configuracao salva
+show spanning-tree                  Informacoes do STP
+show version                        Versao do sistema
+```
 
 ### Privileged EXEC (`Switch#`)
-- `configure terminal` - Entrar em modo de configuracao
-- `write memory` - Salvar configuracao
-- `copy running-config startup-config`
-- `reload` - Reiniciar o switch
+```
+configure terminal                  Entrar em modo de configuracao global
+ping <ip>                           Enviar 5 pings estilo Cisco
+write memory                        Salvar configuracao
+copy running-config startup-config  Salvar configuracao
+reload                              Reiniciar o switch (pede confirmacao)
+show ...                            Todos os comandos show acima
+```
 
 ### Global Config (`Switch(config)#`)
-- `hostname <name>` - Alterar hostname
-- `enable password <pw>` - Definir senha
-- `vlan <id>` / `no vlan <id>` - Criar/remover VLAN
-- `interface GigabitEthernet0/<0-8>` - Configurar interface
-- `interface range GigabitEthernet0/<start>-<end>` - Configurar multiplas interfaces
+```
+hostname <name>                     Alterar hostname
+enable password <pw>                Definir senha de enable
+vlan <id>                           Criar VLAN e entrar em VLAN config
+no vlan <id>                        Remover VLAN e limpar portas automaticamente
+interface GigabitEthernet0/<1-8>    Configurar interface fisica
+interface Vlan<id>                  Criar/configurar SVI (interface L3)
+no interface Vlan<id>               Remover SVI completamente
+interface range Gi0/<x>-<y>        Configurar multiplas interfaces
+interface range Gi0/<x>-<y>,Gi0/<z>-<w>  Range com multiplos segmentos
+ip default-gateway <ip>             Definir gateway padrao
+no ip default-gateway               Remover gateway padrao
+do <comando>                        Executar comando privilegiado em qualquer modo config
+```
 
-### Interface Config (`Switch(config-if)#`)
-- `switchport mode access` / `switchport mode trunk`
-- `switchport access vlan <id>`
-- `switchport trunk allowed vlan <id-list>`
-- `switchport trunk native vlan <id>`
-- `shutdown` / `no shutdown`
+### Interface Config - Porta Fisica (`Switch(config-if)#`)
+```
+switchport mode access              Modo de acesso
+switchport mode trunk               Modo trunk
+switchport access vlan <id>         Definir VLAN de acesso
+no switchport access vlan           Voltar para VLAN 1
+switchport trunk native vlan <id>   VLAN nativa do trunk
+switchport trunk allowed vlan <lista>         Definir VLANs permitidas
+switchport trunk allowed vlan add <lista>     Adicionar VLANs
+switchport trunk allowed vlan remove <lista>  Remover VLANs
+switchport trunk allowed vlan except <lista>  Todas exceto as listadas
+switchport trunk allowed vlan none            Nenhuma VLAN
+switchport trunk allowed vlan all             Todas as VLANs
+description <texto>                 Descricao da interface
+shutdown / no shutdown              Desativar / Ativar porta
+```
+
+### Interface Config - SVI (`Switch(config-if)#`)
+```
+ip address <ip> <mask>              Atribuir endereco IP
+no ip address                       Remover endereco IP
+shutdown / no shutdown              Desativar / Ativar SVI
+description <texto>                 Descricao da SVI
+```
+
+### VLAN Config (`Switch(config-vlan)#`)
+```
+name <nome>                         Nomear a VLAN
+```
+
+## Mapeamento de Interfaces
+
+| EVE-NG | Linux | CLI Cisco |
+|--------|-------|-----------|
+| e0 | eth0 | Management (fora do bridge) |
+| e1 | eth1 | GigabitEthernet0/1 |
+| e2 | eth2 | GigabitEthernet0/2 |
+| ... | ... | ... |
+| e8 | eth8 | GigabitEthernet0/8 |
+
+> **Nota:** eth0 e reservado para gerencia do EVE-NG. Conecte dispositivos a partir de e1.
 
 ## Instalacao no EVE-NG
 
-### Automatica (recomendada)
+### Pre-requisitos
 ```bash
-# Copiar arquivos para o servidor EVE-NG
-scp -r eveng/ root@<EVE-NG-IP>:/tmp/ciscosw-install/
-scp virtioa.qcow2 root@<EVE-NG-IP>:/tmp/ciscosw-install/
-
-# Executar script de instalacao
-ssh root@<EVE-NG-IP> 'bash /tmp/ciscosw-install/install-eveng.sh'
+# No servidor EVE-NG
+apt-get install -y libguestfs-tools
 ```
 
-### Manual
+### Instalacao
 ```bash
 # 1. Copiar template
-cp eveng/ciscosw.yml /opt/unetlab/html/templates/intel/
+cp eveng/swrb.yml /opt/unetlab/html/templates/intel/
 
-# 2. Registrar template
-cp eveng/custom_templates.yml /opt/unetlab/html/includes/
+# 2. Criar diretorio e copiar imagem
+mkdir -p /opt/unetlab/addons/qemu/swrb-v2/
+cp virtioa.qcow2 /opt/unetlab/addons/qemu/swrb-v2/
 
-# 3. Copiar imagem
-mkdir -p /opt/unetlab/addons/qemu/ciscosw-1.0/
-cp virtioa.qcow2 /opt/unetlab/addons/qemu/ciscosw-1.0/
-
-# 4. Fixar permissoes
+# 3. Fixar permissoes
 /opt/unetlab/wrappers/unl_wrapper -a fixpermissions
 ```
 
-## Build da Imagem
+### Atualizar o CLI (deploy)
 
-### Pre-requisitos (host de build)
+Apos modificar arquivos Python no servidor:
 ```bash
-sudo apt-get install qemu-utils guestfs-tools libguestfs-tools linux-image-generic
+bash deploy.sh
 ```
 
-### Rebuild
-A imagem base e construida a partir de uma imagem Alpine Linux cloud (generic_alpine bios-tiny) customizada com `virt-customize` do libguestfs-tools. Consulte [plano.md](plano.md) para o processo completo de build.
+O script injeta todos os arquivos Python na imagem qcow2 via `guestfish` sem precisar iniciar a VM. Apos o deploy, wipe + restart o no no EVE-NG.
 
-### Atualizar apenas o CLI
-```bash
-export LIBGUESTFS_BACKEND=direct
+## Exemplo de Configuracao
 
-virt-customize -a virtioa.qcow2 \
-  --copy-in switchcli/main.py:/opt/switchcli/ \
-  --copy-in switchcli/loader.py:/opt/switchcli/ \
-  --copy-in switchcli/cli:/opt/switchcli/ \
-  --copy-in switchcli/backend:/opt/switchcli/ \
-  --chmod 0755:/opt/switchcli/main.py \
-  --chmod 0755:/opt/switchcli/loader.py
-
-virt-sparsify --compress virtioa.qcow2 virtioa-compressed.qcow2
-mv virtioa-compressed.qcow2 virtioa.qcow2
+```
+Switch> enable
+Switch# configure terminal
+Switch(config)# hostname Core-SW
+Core-SW(config)# vlan 10
+Core-SW(config-vlan)# name PRODUCAO
+Core-SW(config-vlan)# exit
+Core-SW(config)# interface Gi0/1
+Core-SW(config-if)# switchport mode trunk
+Core-SW(config-if)# switchport trunk allowed vlan add 10,20
+Core-SW(config-if)# exit
+Core-SW(config)# interface Vlan10
+Core-SW(config-if)# ip address 192.168.10.1 255.255.255.0
+Core-SW(config-if)# no shutdown
+Core-SW(config-if)# exit
+Core-SW(config)# ip default-gateway 192.168.10.254
+Core-SW(config)# end
+Core-SW# write memory
 ```
 
 ## Limitacoes
 
 - Sem VTP, EtherChannel/LACP, ACLs, SNMP
-- Switch L2 puro (sem inter-VLAN routing)
-- STP basico (802.1D) - sem RSTP/MSTP
+- Switch L2 puro: IP somente em SVIs (interface VlanX), nao em portas fisicas
+- STP basico (802.1D) — sem RSTP/MSTP configuravel
 - Sem port-security ou DHCP snooping
-- `interface range` limitado a ranges contiguos
+- `duplex` / `speed` sem efeito pratico em ambiente QEMU
 
 ## Licenca
 
