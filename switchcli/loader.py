@@ -7,12 +7,12 @@ Executado pelo init script no boot (antes do CLI interativo).
 import sys
 import os
 
-# Garantir imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backend.config_store import ConfigStore
 from backend.vlan import set_access_vlan, set_trunk_allowed_vlans
 from backend.interface import set_interface_shutdown
+from backend import ip_mgmt
 
 
 def load_and_apply(config_path=None):
@@ -27,7 +27,7 @@ def load_and_apply(config_path=None):
     except PermissionError:
         pass
 
-    # Aplicar configuracao de cada interface
+    # Aplicar configuracao de cada interface fisica
     for port_num, iface in store.interfaces.items():
         eth = f"eth{port_num}"
         try:
@@ -43,6 +43,25 @@ def load_and_apply(config_path=None):
                 set_interface_shutdown(eth, shutdown=True)
         except Exception as e:
             print(f"Warning: failed to configure eth{port_num}: {e}",
+                  file=sys.stderr)
+
+    # Aplicar SVIs (interfaces VlanX)
+    for vlan_id, svi in store.svi_interfaces.items():
+        try:
+            ip_mgmt.create_svi(vlan_id)
+            if svi.ip_address and svi.subnet_mask:
+                ip_mgmt.set_svi_ip(vlan_id, svi.ip_address, svi.subnet_mask)
+            ip_mgmt.set_svi_state(vlan_id, shutdown=svi.shutdown)
+        except Exception as e:
+            print(f"Warning: failed to configure Vlan{vlan_id}: {e}",
+                  file=sys.stderr)
+
+    # Aplicar default-gateway
+    if store.default_gateway:
+        try:
+            ip_mgmt.set_default_gateway(store.default_gateway)
+        except Exception as e:
+            print(f"Warning: failed to set default-gateway: {e}",
                   file=sys.stderr)
 
 

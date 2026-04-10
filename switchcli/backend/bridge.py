@@ -19,20 +19,20 @@ INTERFACE_MAP = {
 
 REVERSE_MAP = {v: k for k, v in INTERFACE_MAP.items()}
 
+# Regex para prefixo GigabitEthernet (abreviado)
+_GI_PREFIX = r'(?i)^gi(?:g(?:a(?:b(?:i(?:t(?:e(?:t(?:h(?:e(?:r(?:n(?:et?)?)?)?)?)?)?)?)?)?)?)?)?'
+
 
 def normalize_interface_name(name):
-    """
-    Normaliza abreviacoes de interface para nome completo.
-    gi0/1, Gi0/1, gig0/1, gigabitethernet0/1 -> GigabitEthernet0/1
-    """
-    m = re.match(r'(?i)^gi(?:g(?:a(?:b(?:i(?:t(?:e(?:t(?:h(?:e(?:r(?:n(?:et?)?)?)?)?)?)?)?)?)?)?)?)?(\d+/\d+)$', name)
+    """gi0/1 -> GigabitEthernet0/1"""
+    m = re.match(_GI_PREFIX + r'(\d+/\d+)$', name)
     if m:
         return f"GigabitEthernet{m.group(1)}"
     return name
 
 
 def cisco_to_linux(cisco_name):
-    """GigabitEthernet0/1 -> eth1. Aceita abreviacoes: Gi0/1, gi0/1"""
+    """GigabitEthernet0/1 -> eth1. Aceita abreviacoes."""
     normalized = normalize_interface_name(cisco_name)
     return INTERFACE_MAP.get(normalized)
 
@@ -57,12 +57,8 @@ def format_mac_cisco(mac):
 
 
 def parse_interface_spec(spec):
-    """
-    Parse interface specification.
-    'GigabitEthernet0/1' -> ['eth1']
-    'Gi0/1' -> ['eth1']
-    """
-    normalized = normalize_interface_name(spec)
+    """'Gi0/1' -> ['eth1']"""
+    normalized = normalize_interface_name(spec.strip())
     eth = INTERFACE_MAP.get(normalized)
     if eth:
         return [eth]
@@ -71,13 +67,38 @@ def parse_interface_spec(spec):
 
 def parse_interface_range(range_str):
     """
-    Parse 'GigabitEthernet0/1-4' -> ['eth1', 'eth2', 'eth3', 'eth4']
-    Also accepts abbreviated forms: Gi0/1-4, gi0/1-4
+    Parse range de interfaces. Suporta:
+      - 'Gi0/1-4'           -> [eth1, eth2, eth3, eth4]
+      - 'Gi0/1-2,Gi0/4-5'  -> [eth1, eth2, eth4, eth5]
+      - 'Gi0/1 - 4'         -> [eth1, eth2, eth3, eth4]  (espacos ao redor do hifen)
     """
-    m = re.match(
-        r'(?i)^gi(?:g(?:a(?:b(?:i(?:t(?:e(?:t(?:h(?:e(?:r(?:n(?:et?)?)?)?)?)?)?)?)?)?)?)?)?(\d+)/(\d+)-(\d+)$',
-        range_str
-    )
+    # Normalizar espacos: "Gi0/1 - 4" -> "Gi0/1-4"
+    range_str = re.sub(r'\s*-\s*', '-', range_str.strip())
+    # Dividir por virgula para suportar multiplos segmentos
+    segments = [s.strip() for s in range_str.split(',') if s.strip()]
+    result = []
+    for seg in segments:
+        eths = _parse_single_range(seg)
+        if eths:
+            result.extend(eths)
+        else:
+            # Tentar como interface simples
+            single = parse_interface_spec(seg)
+            if single:
+                result.extend(single)
+    # Remover duplicatas preservando ordem
+    seen = set()
+    unique = []
+    for e in result:
+        if e not in seen:
+            seen.add(e)
+            unique.append(e)
+    return unique
+
+
+def _parse_single_range(range_str):
+    """Parse 'Gi0/1-4' -> ['eth1', 'eth2', 'eth3', 'eth4']"""
+    m = re.match(_GI_PREFIX + r'(\d+)/(\d+)-(\d+)$', range_str)
     if m:
         start = int(m.group(2))
         end = int(m.group(3))

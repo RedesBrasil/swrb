@@ -1,6 +1,6 @@
 """
 Gerencia running-config e startup-config em memoria e disco.
-Armazena hostname, VLANs, interfaces e enable password.
+Armazena hostname, VLANs, interfaces, SVIs, default-gateway e enable password.
 """
 
 import json
@@ -46,12 +46,45 @@ class InterfaceConfig:
         )
 
 
+class SVIConfig:
+    """Configuracao de uma interface VLAN (SVI) para gerencia IP."""
+
+    def __init__(self, vlan_id, ip_address=None, subnet_mask=None,
+                 shutdown=True, description=""):
+        self.vlan_id = vlan_id
+        self.ip_address = ip_address
+        self.subnet_mask = subnet_mask
+        self.shutdown = shutdown      # SVIs iniciam em shutdown por padrao
+        self.description = description
+
+    def to_dict(self):
+        return {
+            "vlan_id": self.vlan_id,
+            "ip_address": self.ip_address,
+            "subnet_mask": self.subnet_mask,
+            "shutdown": self.shutdown,
+            "description": self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, d):
+        return cls(
+            vlan_id=d["vlan_id"],
+            ip_address=d.get("ip_address"),
+            subnet_mask=d.get("subnet_mask"),
+            shutdown=d.get("shutdown", True),
+            description=d.get("description", ""),
+        )
+
+
 class ConfigStore:
     def __init__(self):
         self.hostname = self._load_hostname()
         self.enable_password = None
         self.vlans = {1: "default"}
         self.interfaces = {}
+        self.svi_interfaces = {}      # {vlan_id: SVIConfig}
+        self.default_gateway = None   # str ou None
         for i in range(1, 9):
             self.interfaces[i] = InterfaceConfig(port_num=i)
 
@@ -84,6 +117,14 @@ class ConfigStore:
     def get_interface(self, port_num):
         return self.interfaces.get(port_num)
 
+    def get_svi(self, vlan_id):
+        return self.svi_interfaces.get(vlan_id)
+
+    def get_or_create_svi(self, vlan_id):
+        if vlan_id not in self.svi_interfaces:
+            self.svi_interfaces[vlan_id] = SVIConfig(vlan_id=vlan_id)
+        return self.svi_interfaces[vlan_id]
+
     def save_startup(self):
         data = self._serialize()
         path = os.path.join(CONFIG_DIR, "startup-config")
@@ -108,6 +149,10 @@ class ConfigStore:
             "interfaces": {
                 str(k): v.to_dict() for k, v in self.interfaces.items()
             },
+            "svi_interfaces": {
+                str(k): v.to_dict() for k, v in self.svi_interfaces.items()
+            },
+            "default_gateway": self.default_gateway,
         }
 
     def _deserialize(self, data):
@@ -116,3 +161,7 @@ class ConfigStore:
         self.vlans = {int(k): v for k, v in data.get("vlans", {}).items()}
         for k, v in data.get("interfaces", {}).items():
             self.interfaces[int(k)] = InterfaceConfig.from_dict(v)
+        self.svi_interfaces = {}
+        for k, v in data.get("svi_interfaces", {}).items():
+            self.svi_interfaces[int(k)] = SVIConfig.from_dict(v)
+        self.default_gateway = data.get("default_gateway")
