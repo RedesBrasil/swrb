@@ -79,6 +79,8 @@ show lldp                           Status global do LLDP (parcial - ver Limitac
 show lldp neighbors                 Vizinhos LLDP detectados
 show lldp neighbors detail          Detalhes dos vizinhos LLDP
 show lldp interface                 Status LLDP por interface
+exit                                Encerrar sessao (logoff)
+logout                              Encerrar sessao (logoff)
 ```
 
 ### Privileged EXEC (`Switch#`)
@@ -92,6 +94,9 @@ reload                              Reiniciar o switch (pede confirmacao)
 write erase                         Apagar startup-config
 erase startup-config                Apagar startup-config
 clear mac address-table dynamic     Limpar tabela de MACs
+disable                             Voltar para User EXEC
+exit                                Voltar para User EXEC (ver divergencia abaixo)
+logout                              Encerrar sessao (logoff)
 show ...                            Todos os comandos show acima
 ```
 
@@ -229,6 +234,19 @@ Core-SW(config)# ip default-gateway 192.168.10.254
 Core-SW(config)# end
 Core-SW# write memory
 ```
+
+## Divergencias do Cisco IOS
+
+Alguns comportamentos do SWRB nao sao 100% identicos ao Cisco IOS real. Lista abaixo
+para quem usa o projeto em laboratorio didatico:
+
+| Comando / tecla | Cisco IOS real | SWRB | Motivo |
+|---|---|---|---|
+| `exit` em Privileged EXEC | Encerra a sessao (logoff) | Volta para User EXEC | Conveniencia — evita logoff acidental ao sair de `configure terminal` em cadeia |
+| `Ctrl+D` | Ignorado pelo IOS | Faz logoff (volta a tela de login) | Convencao Unix — util em console serial |
+| `banner motd` padrao de fabrica | Vazio | Banner institucional SWRB ja vem configurado | Identificacao do projeto no boot |
+
+Para encerrar a sessao a partir de Privileged EXEC use `logout` (ou `disable` + `exit`).
 
 ## Limitacoes
 

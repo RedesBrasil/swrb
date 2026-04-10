@@ -57,6 +57,11 @@ from cli.commands.system import (
     cmd_reload, cmd_clear_mac_address_table, cmd_spanning_tree_mode,
 )
 
+class LogoffSignal(Exception):
+    """Sinaliza logoff do usuario (exit/logout)."""
+    pass
+
+
 _RE_VLAN_IFACE = re.compile(r'^[Vv][Ll][Aa][Nn]\s*(\d+)$')
 _RE_MGMT_IFACE = re.compile(r'^[Mm]anagement\s*0?$', re.IGNORECASE)
 _RE_GI_IFACE   = re.compile(r'^[Gg]i.*|^[Gg]igabit.*', re.IGNORECASE)
@@ -118,7 +123,8 @@ class CLIEngine:
                 print("^C")
                 continue
             except EOFError:
-                break
+                # Ctrl+D = logoff (volta para tela de login)
+                raise LogoffSignal()
 
     def dispatch(self, line):
         self._raw_line = line  # para comandos que precisam do texto bruto (banner)
@@ -143,7 +149,7 @@ class CLIEngine:
 
     # ── USER EXEC ──────────────────────────────────────────────────────────────
     def _dispatch_user_exec(self, tokens):
-        cmd = match_command(tokens[0], ["enable", "show", "exit"])
+        cmd = match_command(tokens[0], ["enable", "show", "exit", "logout"])
         if cmd == "enable":
             if self.config_store.enable_password:
                 try:
@@ -157,14 +163,14 @@ class CLIEngine:
             self.mode = "PRIVILEGED_EXEC"
         elif cmd == "show":
             self._handle_show(tokens[1:])
-        elif cmd == "exit":
-            pass
+        elif cmd in ("exit", "logout"):
+            raise LogoffSignal()
 
     # ── PRIVILEGED EXEC ────────────────────────────────────────────────────────
     def _dispatch_privileged_exec(self, tokens):
         cmd = match_command(tokens[0], [
             "configure", "show", "write", "copy",
-            "ping", "disable", "reload", "erase", "clear", "exit",
+            "ping", "disable", "reload", "erase", "clear", "exit", "logout",
         ])
 
         if cmd == "configure":
@@ -224,6 +230,9 @@ class CLIEngine:
 
         elif cmd == "exit":
             self.mode = "USER_EXEC"
+
+        elif cmd == "logout":
+            raise LogoffSignal()
 
     # ── GLOBAL CONFIG ──────────────────────────────────────────────────────────
     def _dispatch_global_config(self, tokens):

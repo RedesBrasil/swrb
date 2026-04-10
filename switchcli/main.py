@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ["PROMPT_TOOLKIT_NO_CPR"] = "1"
 
 from cli.banner import print_banner
-from cli.engine import CLIEngine
+from cli.engine import CLIEngine, LogoffSignal
 
 _MAX_LOGIN_ATTEMPTS = 3
 _DEFAULT_USER = "admin"
@@ -57,14 +57,11 @@ def _do_login(config_store):
     sys.exit(1)
 
 
-def main():
-    # Ignorar Ctrl+Z (SIGTSTP) para nao cair no shell Linux
-    signal.signal(signal.SIGTSTP, signal.SIG_IGN)
+def _show_login_and_banner(engine, show_boot_banner=False):
+    """Executa login, exibe aviso de credencial padrao e banner MOTD."""
+    if show_boot_banner:
+        print_banner()
 
-    print_banner()
-    engine = CLIEngine()
-
-    # Login
     _do_login(engine.config_store)
 
     # Aviso de credenciais padrao (sem senha configurada)
@@ -80,11 +77,35 @@ def main():
         print(engine.config_store.banner_motd)
         print()
 
-    try:
-        engine.run()
-    except (EOFError, KeyboardInterrupt):
-        print("\n")
-        sys.exit(0)
+
+def main():
+    # Ignorar Ctrl+Z (SIGTSTP) para nao cair no shell Linux
+    signal.signal(signal.SIGTSTP, signal.SIG_IGN)
+
+    engine = CLIEngine()
+    first_run = True
+
+    # Loop de sessao: cada logoff volta para a tela de login
+    while True:
+        _show_login_and_banner(engine, show_boot_banner=first_run)
+        first_run = False
+
+        # Resetar estado do CLI para USER_EXEC
+        engine.mode = "USER_EXEC"
+        engine.current_interfaces = []
+        engine.current_vlan = None
+        engine.current_svi = None
+        engine.current_management = False
+
+        try:
+            engine.run()
+        except LogoffSignal:
+            # Logoff: volta para login
+            print()
+            continue
+        except KeyboardInterrupt:
+            print()
+            continue
 
 
 if __name__ == "__main__":

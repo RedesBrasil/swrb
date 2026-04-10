@@ -8,6 +8,20 @@ import os
 
 CONFIG_DIR = "/opt/switchcli/configs"
 
+# Banner MOTD padrao (centralizado em 55 colunas)
+DEFAULT_BANNER_MOTD = "\n".join([
+    "#" * 55,
+    "#" + " " * 53 + "#",
+    "#" + "SWITCH REDES BRASIL L2 - CISCO LIKE".center(53) + "#",
+    "#" + " " * 53 + "#",
+    "#" + "DESENVOLVIDO POR:".center(53) + "#",
+    "#" + "MATHEUS SALVADOR E FRANCISCO NETO".center(53) + "#",
+    "#" + " " * 53 + "#",
+    "#" + "CO-AUTOR: CLAUDE (ANTHROPIC)".center(53) + "#",
+    "#" + " " * 53 + "#",
+    "#" * 55,
+])
+
 
 class InterfaceConfig:
     def __init__(self, port_num, mode="access", access_vlan=1,
@@ -148,7 +162,7 @@ class ConfigStore:
         self.management = ManagementConfig()
         self.spanning_tree_mode = "pvst"   # pvst | rapid-pvst | none
         self.static_routes = []            # lista de StaticRoute
-        self.banner_motd = None            # texto do banner MOTD
+        self.banner_motd = DEFAULT_BANNER_MOTD  # texto do banner MOTD
         self.lldp_enabled = False
         self.lldp_timer = 30               # intervalo tx (padrao Cisco: 30s)
         self.lldp_holdtime = 120           # holdtime vizinhos (padrao: 120s)
