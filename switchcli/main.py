@@ -23,6 +23,12 @@ def main():
     print_banner()
     engine = CLIEngine()
 
+    # Banner MOTD (se configurado)
+    if engine.config_store.banner_motd:
+        print()
+        print(engine.config_store.banner_motd)
+        print()
+
     try:
         engine.run()
     except (EOFError, KeyboardInterrupt):

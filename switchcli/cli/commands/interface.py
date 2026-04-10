@@ -2,6 +2,7 @@
 Comandos de configuracao de interface:
 switchport mode, switchport access/trunk vlan, shutdown, description.
 Comandos SVI: ip address, shutdown, description.
+Comandos Management0: ip address, shutdown, description.
 """
 
 import ipaddress
@@ -57,21 +58,10 @@ def cmd_switchport_access_vlan(config_store, eth_names, args):
 
 
 def cmd_switchport_trunk_allowed_vlan(config_store, eth_names, args):
-    """
-    switchport trunk allowed vlan <list>          -- substitui lista completa
-    switchport trunk allowed vlan add <list>      -- adiciona VLANs
-    switchport trunk allowed vlan remove <list>   -- remove VLANs
-    switchport trunk allowed vlan except <list>   -- todas exceto
-    switchport trunk allowed vlan none            -- remove todas
-    switchport trunk allowed vlan all             -- permite todas
-    """
     if not args:
         print("% Incomplete command.")
         return
-
     first = args[0].lower()
-
-    # Acoes com subargumento
     if first in ("add", "remove", "except"):
         if len(args) < 2:
             print("% Incomplete command.")
@@ -89,7 +79,6 @@ def cmd_switchport_trunk_allowed_vlan(config_store, eth_names, args):
         action = "all"
         extra_list = []
     else:
-        # Sem palavra-chave: substitui lista completa
         vlan_list = parse_vlan_list(args[0])
         if not vlan_list:
             print("% Bad VLAN list.")
@@ -104,9 +93,7 @@ def cmd_switchport_trunk_allowed_vlan(config_store, eth_names, args):
         iface = config_store.get_interface(port)
         if not iface:
             continue
-
         current = list(iface.trunk_allowed_vlans)
-
         if action == "set":
             new_list = sorted(extra_list)
         elif action == "add":
@@ -118,11 +105,9 @@ def cmd_switchport_trunk_allowed_vlan(config_store, eth_names, args):
         elif action == "none":
             new_list = []
         elif action == "all":
-            new_list = []  # lista vazia = permitir todas
-
+            new_list = []
         for vid in new_list:
             config_store.register_vlan(vid)
-
         iface.trunk_allowed_vlans = new_list
         try:
             set_trunk_allowed_vlans(eth, new_list, native_vlan=iface.native_vlan)
@@ -195,13 +180,7 @@ def cmd_description(config_store, eth_names, args):
 
 
 def cmd_cleanup_vlan_from_ports(config_store, vlan_id):
-    """
-    Limpa referencias a vlan_id em todas as interfaces apos 'no vlan X'.
-    - Portas access com access_vlan == vlan_id voltam para VLAN 1
-    - Portas trunk tem vlan_id removido de trunk_allowed_vlans
-    """
     from backend.vlan import set_access_vlan, set_trunk_allowed_vlans
-
     for port_num, iface in config_store.interfaces.items():
         eth = f"eth{port_num}"
         if iface.mode == "access" and iface.access_vlan == vlan_id:
@@ -221,9 +200,7 @@ def cmd_cleanup_vlan_from_ports(config_store, vlan_id):
                 pass
 
 
-# -------------------------------------------------------
-# Comandos SVI (interface VlanX)
-# -------------------------------------------------------
+# ── SVI (interface VlanX) ──────────────────────────────────────────────────────
 
 def _is_valid_ip(ip_str):
     try:
@@ -284,3 +261,155 @@ def cmd_svi_description(config_store, vlan_id, args):
     desc = " ".join(args) if args else ""
     svi = config_store.get_or_create_svi(vlan_id)
     svi.description = desc
+
+
+# ── Management0 (eth0) ─────────────────────────────────────────────────────────
+
+def cmd_mgmt_ip_address(config_store, args):
+    """ip address <ip> <mask>  OU  ip address dhcp  na Management0."""
+    if not args:
+        print("% Incomplete command.")
+        return
+    # Forma DHCP
+    if args[0].lower() == "dhcp":
+        config_store.management.method = "dhcp"
+        config_store.management.ip_address = None
+        config_store.management.subnet_mask = None
+        try:
+            ok = ip_mgmt.set_mgmt_dhcp()
+            if not ok:
+                print("% DHCP request failed (no lease obtained)")
+            else:
+                info = ip_mgmt.get_mgmt_info()
+                if info.get("ip"):
+                    print(f"% Management0 acquired IP {info['ip']} via DHCP")
+        except Exception as e:
+            print(f"% Error requesting DHCP: {e}")
+        return
+    # Forma estatica
+    if len(args) < 2:
+        print("% Incomplete command.")
+        return
+    ip_addr, mask = args[0], args[1]
+    if not _is_valid_ip(ip_addr):
+        print("% Invalid IP address.")
+        return
+    if not _is_valid_mask(mask):
+        print("% Invalid subnet mask.")
+        return
+    config_store.management.method = "static"
+    config_store.management.ip_address = ip_addr
+    config_store.management.subnet_mask = mask
+    try:
+        ip_mgmt.set_mgmt_ip(ip_addr, mask)
+    except Exception as e:
+        print(f"% Error configuring Management0: {e}")
+
+
+def cmd_no_mgmt_ip_address(config_store):
+    """no ip address na Management0."""
+    config_store.management.ip_address = None
+    config_store.management.subnet_mask = None
+    config_store.management.method = "unset"
+    try:
+        ip_mgmt.remove_mgmt_ip()
+    except Exception as e:
+        print(f"% Error removing IP from Management0: {e}")
+
+
+def cmd_mgmt_shutdown(config_store, negate=False):
+    """shutdown / no shutdown na Management0."""
+    config_store.management.shutdown = not negate
+    try:
+        ip_mgmt.set_mgmt_state(shutdown=not negate)
+    except Exception as e:
+        print(f"% Error configuring Management0: {e}")
+
+
+def cmd_mgmt_description(config_store, args):
+    desc = " ".join(args) if args else ""
+    config_store.management.description = desc
+
+
+# ── Speed / Duplex (interface fisica) ──────────────────────────────────────────
+
+_VALID_SPEEDS = ("auto", "10", "100", "1000")
+_VALID_DUPLEX = ("auto", "full", "half")
+
+
+def cmd_interface_speed(config_store, eth_names, args):
+    """speed auto|10|100|1000"""
+    if not args:
+        print("% Incomplete command.")
+        return
+    spd = args[0].lower()
+    if spd not in _VALID_SPEEDS:
+        print(f"% Invalid speed. Valid: {', '.join(_VALID_SPEEDS)}")
+        return
+    for eth in eth_names:
+        port = eth_to_port_num(eth)
+        if port is None:
+            continue
+        iface = config_store.get_interface(port)
+        if iface:
+            iface.speed = spd
+            try:
+                ip_mgmt.set_interface_speed_duplex(eth, iface.speed, iface.duplex)
+            except Exception:
+                pass
+
+
+def cmd_interface_duplex(config_store, eth_names, args):
+    """duplex auto|full|half"""
+    if not args:
+        print("% Incomplete command.")
+        return
+    dpx = args[0].lower()
+    if dpx not in _VALID_DUPLEX:
+        print(f"% Invalid duplex. Valid: {', '.join(_VALID_DUPLEX)}")
+        return
+    for eth in eth_names:
+        port = eth_to_port_num(eth)
+        if port is None:
+            continue
+        iface = config_store.get_interface(port)
+        if iface:
+            iface.duplex = dpx
+            try:
+                ip_mgmt.set_interface_speed_duplex(eth, iface.speed, iface.duplex)
+            except Exception:
+                pass
+
+
+# ── LLDP por interface ─────────────────────────────────────────────────────────
+
+def cmd_lldp_transmit(config_store, eth_names, enable=True):
+    """lldp transmit / no lldp transmit"""
+    for eth in eth_names:
+        port = eth_to_port_num(eth)
+        if port is None:
+            continue
+        iface = config_store.get_interface(port)
+        if iface:
+            iface.lldp_transmit = enable
+            if config_store.lldp_enabled:
+                try:
+                    ip_mgmt.set_lldp_interface(eth, iface.lldp_transmit, iface.lldp_receive)
+                except Exception:
+                    pass
+
+
+def cmd_lldp_receive(config_store, eth_names, enable=True):
+    """lldp receive / no lldp receive"""
+    for eth in eth_names:
+        port = eth_to_port_num(eth)
+        if port is None:
+            continue
+        iface = config_store.get_interface(port)
+        if iface:
+            iface.lldp_receive = enable
+            if config_store.lldp_enabled:
+                try:
+                    ip_mgmt.set_lldp_interface(eth, iface.lldp_transmit, iface.lldp_receive)
+                except Exception:
+                    pass

@@ -1,11 +1,9 @@
 """
 Gerencia running-config e startup-config em memoria e disco.
-Armazena hostname, VLANs, interfaces, SVIs, default-gateway e enable password.
 """
 
 import json
 import os
-
 
 CONFIG_DIR = "/opt/switchcli/configs"
 
@@ -13,7 +11,9 @@ CONFIG_DIR = "/opt/switchcli/configs"
 class InterfaceConfig:
     def __init__(self, port_num, mode="access", access_vlan=1,
                  trunk_allowed_vlans=None, native_vlan=1,
-                 shutdown=False, description=""):
+                 shutdown=False, description="",
+                 speed="auto", duplex="auto",
+                 lldp_transmit=True, lldp_receive=True):
         self.port_num = port_num
         self.mode = mode
         self.access_vlan = access_vlan
@@ -21,6 +21,10 @@ class InterfaceConfig:
         self.native_vlan = native_vlan
         self.shutdown = shutdown
         self.description = description
+        self.speed = speed              # auto | 10 | 100 | 1000
+        self.duplex = duplex            # auto | full | half
+        self.lldp_transmit = lldp_transmit   # True = habilitado (padrao Cisco)
+        self.lldp_receive = lldp_receive     # True = habilitado (padrao Cisco)
 
     def to_dict(self):
         return {
@@ -31,6 +35,10 @@ class InterfaceConfig:
             "native_vlan": self.native_vlan,
             "shutdown": self.shutdown,
             "description": self.description,
+            "speed": self.speed,
+            "duplex": self.duplex,
+            "lldp_transmit": self.lldp_transmit,
+            "lldp_receive": self.lldp_receive,
         }
 
     @classmethod
@@ -43,18 +51,20 @@ class InterfaceConfig:
             native_vlan=d.get("native_vlan", 1),
             shutdown=d.get("shutdown", False),
             description=d.get("description", ""),
+            speed=d.get("speed", "auto"),
+            duplex=d.get("duplex", "auto"),
+            lldp_transmit=d.get("lldp_transmit", True),
+            lldp_receive=d.get("lldp_receive", True),
         )
 
 
 class SVIConfig:
-    """Configuracao de uma interface VLAN (SVI) para gerencia IP."""
-
     def __init__(self, vlan_id, ip_address=None, subnet_mask=None,
                  shutdown=True, description=""):
         self.vlan_id = vlan_id
         self.ip_address = ip_address
         self.subnet_mask = subnet_mask
-        self.shutdown = shutdown      # SVIs iniciam em shutdown por padrao
+        self.shutdown = shutdown
         self.description = description
 
     def to_dict(self):
@@ -77,14 +87,72 @@ class SVIConfig:
         )
 
 
+class ManagementConfig:
+    """Configuracao da interface de gerencia OOB (eth0 / Management0)."""
+
+    def __init__(self, ip_address=None, subnet_mask=None,
+                 shutdown=False, description="", method="unset"):
+        self.ip_address = ip_address
+        self.subnet_mask = subnet_mask
+        self.shutdown = shutdown        # Management0 inicia UP por padrao
+        self.description = description
+        self.method = method            # unset | static | dhcp
+
+    def to_dict(self):
+        return {
+            "ip_address": self.ip_address,
+            "subnet_mask": self.subnet_mask,
+            "shutdown": self.shutdown,
+            "description": self.description,
+            "method": self.method,
+        }
+
+    @classmethod
+    def from_dict(cls, d):
+        return cls(
+            ip_address=d.get("ip_address"),
+            subnet_mask=d.get("subnet_mask"),
+            shutdown=d.get("shutdown", False),
+            description=d.get("description", ""),
+            method=d.get("method", "unset"),
+        )
+
+
+class StaticRoute:
+    def __init__(self, network, mask, gateway):
+        self.network = network
+        self.mask = mask
+        self.gateway = gateway
+
+    def to_dict(self):
+        return {"network": self.network, "mask": self.mask, "gateway": self.gateway}
+
+    @classmethod
+    def from_dict(cls, d):
+        return cls(d["network"], d["mask"], d["gateway"])
+
+    def key(self):
+        return (self.network, self.mask)
+
+
 class ConfigStore:
     def __init__(self):
         self.hostname = self._load_hostname()
         self.enable_password = None
         self.vlans = {1: "default"}
         self.interfaces = {}
-        self.svi_interfaces = {}      # {vlan_id: SVIConfig}
-        self.default_gateway = None   # str ou None
+        self.svi_interfaces = {}
+        self.default_gateway = None
+        self.management = ManagementConfig()
+        self.spanning_tree_mode = "pvst"   # pvst | rapid-pvst | none
+        self.static_routes = []            # lista de StaticRoute
+        self.banner_motd = None            # texto do banner MOTD
+        self.lldp_enabled = False
+        self.lldp_timer = 30               # intervalo tx (padrao Cisco: 30s)
+        self.lldp_holdtime = 120           # holdtime vizinhos (padrao: 120s)
+        self.lldp_reinit = 2               # reinit delay (padrao: 2s)
+        self.errdisable_causes = []        # lista de causas habilitadas
+        self.errdisable_interval = 300     # segundos
         for i in range(1, 9):
             self.interfaces[i] = InterfaceConfig(port_num=i)
 
@@ -141,18 +209,39 @@ class ConfigStore:
         self._deserialize(data)
         return True
 
+    def add_static_route(self, network, mask, gateway):
+        route = StaticRoute(network, mask, gateway)
+        for r in self.static_routes:
+            if r.key() == route.key():
+                r.gateway = gateway
+                return
+        self.static_routes.append(route)
+
+    def remove_static_route(self, network, mask):
+        before = len(self.static_routes)
+        self.static_routes = [
+            r for r in self.static_routes if r.key() != (network, mask)
+        ]
+        return len(self.static_routes) < before
+
     def _serialize(self):
         return {
             "hostname": self.hostname,
             "enable_password": self.enable_password,
             "vlans": {str(k): v for k, v in self.vlans.items()},
-            "interfaces": {
-                str(k): v.to_dict() for k, v in self.interfaces.items()
-            },
-            "svi_interfaces": {
-                str(k): v.to_dict() for k, v in self.svi_interfaces.items()
-            },
+            "interfaces": {str(k): v.to_dict() for k, v in self.interfaces.items()},
+            "svi_interfaces": {str(k): v.to_dict() for k, v in self.svi_interfaces.items()},
             "default_gateway": self.default_gateway,
+            "management": self.management.to_dict(),
+            "spanning_tree_mode": self.spanning_tree_mode,
+            "static_routes": [r.to_dict() for r in self.static_routes],
+            "banner_motd": self.banner_motd,
+            "lldp_enabled": self.lldp_enabled,
+            "lldp_timer": self.lldp_timer,
+            "lldp_holdtime": self.lldp_holdtime,
+            "lldp_reinit": self.lldp_reinit,
+            "errdisable_causes": list(self.errdisable_causes),
+            "errdisable_interval": self.errdisable_interval,
         }
 
     def _deserialize(self, data):
@@ -165,3 +254,16 @@ class ConfigStore:
         for k, v in data.get("svi_interfaces", {}).items():
             self.svi_interfaces[int(k)] = SVIConfig.from_dict(v)
         self.default_gateway = data.get("default_gateway")
+        mgmt_data = data.get("management", {})
+        self.management = ManagementConfig.from_dict(mgmt_data) if mgmt_data else ManagementConfig()
+        self.spanning_tree_mode = data.get("spanning_tree_mode", "pvst")
+        self.static_routes = [
+            StaticRoute.from_dict(r) for r in data.get("static_routes", [])
+        ]
+        self.banner_motd = data.get("banner_motd")
+        self.lldp_enabled = data.get("lldp_enabled", False)
+        self.lldp_timer = data.get("lldp_timer", 30)
+        self.lldp_holdtime = data.get("lldp_holdtime", 120)
+        self.lldp_reinit = data.get("lldp_reinit", 2)
+        self.errdisable_causes = list(data.get("errdisable_causes", []))
+        self.errdisable_interval = data.get("errdisable_interval", 300)

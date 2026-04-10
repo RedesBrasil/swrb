@@ -69,18 +69,29 @@ show interfaces trunk               Portas trunk e VLANs permitidas
 show ip interface brief             IPs de todas as interfaces (fisicas + SVIs)
 show arp                            Tabela ARP das SVIs
 show running-config                 Configuracao ativa
+show running-config interface <if>  Configuracao de interface especifica
 show startup-config                 Configuracao salva
 show spanning-tree                  Informacoes do STP
 show version                        Versao do sistema
+show ip route                       Tabela de roteamento
+show logging                        Logs do sistema
+show lldp                           Status global do LLDP (parcial - ver Limitacoes)
+show lldp neighbors                 Vizinhos LLDP detectados
+show lldp neighbors detail          Detalhes dos vizinhos LLDP
+show lldp interface                 Status LLDP por interface
 ```
 
 ### Privileged EXEC (`Switch#`)
 ```
 configure terminal                  Entrar em modo de configuracao global
 ping <ip>                           Enviar 5 pings estilo Cisco
+ping <ip> repeat <n>                Enviar N pings
 write memory                        Salvar configuracao
 copy running-config startup-config  Salvar configuracao
 reload                              Reiniciar o switch (pede confirmacao)
+write erase                         Apagar startup-config
+erase startup-config                Apagar startup-config
+clear mac address-table dynamic     Limpar tabela de MACs
 show ...                            Todos os comandos show acima
 ```
 
@@ -98,6 +109,18 @@ interface range Gi0/<x>-<y>,Gi0/<z>-<w>  Range com multiplos segmentos
 ip default-gateway <ip>             Definir gateway padrao
 no ip default-gateway               Remover gateway padrao
 do <comando>                        Executar comando privilegiado em qualquer modo config
+ip route <rede> <mascara> <gw>      Adicionar rota estatica
+no ip route <rede> <mascara>        Remover rota estatica
+banner motd <delim><texto><delim>   Mensagem de login
+no banner motd                      Remover mensagem de login
+lldp run                            Habilitar LLDP globalmente (parcial - ver Limitacoes)
+no lldp run                         Desabilitar LLDP
+lldp timer <segundos>               Intervalo de transmissao LLDP (padrao 30s)
+lldp holdtime <segundos>            Holdtime LLDP (padrao 120s)
+lldp reinit <segundos>              Delay de reinit LLDP (padrao 2s)
+spanning-tree mode pvst|rapid-pvst|none  Modo STP
+errdisable recovery cause <causa>   Habilitar recuperacao de err-disabled
+errdisable recovery interval <seg>  Intervalo de recuperacao
 ```
 
 ### Interface Config - Porta Fisica (`Switch(config-if)#`)
@@ -115,6 +138,10 @@ switchport trunk allowed vlan none            Nenhuma VLAN
 switchport trunk allowed vlan all             Todas as VLANs
 description <texto>                 Descricao da interface
 shutdown / no shutdown              Desativar / Ativar porta
+speed auto|10|100|1000              Velocidade da interface
+duplex auto|full|half               Modo duplex
+lldp transmit / no lldp transmit    Habilitar/desabilitar envio LLDP
+lldp receive / no lldp receive      Habilitar/desabilitar recepcao LLDP
 ```
 
 ### Interface Config - SVI (`Switch(config-if)#`)
@@ -123,6 +150,15 @@ ip address <ip> <mask>              Atribuir endereco IP
 no ip address                       Remover endereco IP
 shutdown / no shutdown              Desativar / Ativar SVI
 description <texto>                 Descricao da SVI
+```
+
+### Interface Config - Management0 (`Switch(config-if)#`)
+```
+ip address <ip> <mask>              Configurar IP estatico na porta OOB
+ip address dhcp                     Obter IP via DHCP na porta OOB
+no ip address                       Remover IP
+shutdown / no shutdown              Desativar / Ativar porta de gerencia
+description <texto>                 Descricao
 ```
 
 ### VLAN Config (`Switch(config-vlan)#`)
@@ -201,6 +237,7 @@ Core-SW# write memory
 - STP basico (802.1D) — sem RSTP/MSTP configuravel
 - Sem port-security ou DHCP snooping
 - `duplex` / `speed` sem efeito pratico em ambiente QEMU
+- **LLDP parcialmente implementado:** comandos CLI funcionam (lldp run, show lldp, timers, tx/rx por porta), mas o daemon lldpd nao inicializa corretamente na VM — vizinhos nao sao detectados. Em investigacao.
 
 ## Licenca
 
