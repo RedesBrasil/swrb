@@ -191,17 +191,39 @@ name <nome>                         Nomear a VLAN
 apt-get install -y libguestfs-tools
 ```
 
-### Instalacao
+### Instalacao automatica (recomendado)
+```bash
+bash eveng/install-eveng.sh
+```
+
+O script instala o template `ciscosw` (listado como **"CiscoSW-L2 Switch"** na UI do EVE-NG)
+e copia a imagem `virtioa.qcow2` para `/opt/unetlab/addons/qemu/ciscosw-swrb-v2/`.
+
+### Instalacao manual
 ```bash
 # 1. Copiar template
-cp eveng/swrb.yml /opt/unetlab/html/templates/intel/
+cp eveng/ciscosw.yml /opt/unetlab/html/templates/intel/
+cp eveng/custom_templates.yml /opt/unetlab/html/includes/
 
 # 2. Criar diretorio e copiar imagem
-mkdir -p /opt/unetlab/addons/qemu/swrb-v2/
-cp virtioa.qcow2 /opt/unetlab/addons/qemu/swrb-v2/
+mkdir -p /opt/unetlab/addons/qemu/ciscosw-swrb-v2/
+cp virtioa.qcow2 /opt/unetlab/addons/qemu/ciscosw-swrb-v2/
 
 # 3. Fixar permissoes
 /opt/unetlab/wrappers/unl_wrapper -a fixpermissions
+```
+
+### Multiplas imagens sob o mesmo template
+
+O EVE-NG lista no seletor do template `ciscosw` todos os diretorios que casam
+com o padrao `/opt/unetlab/addons/qemu/ciscosw-*/`. Para manter versoes antigas
+lado a lado com a imagem atual, basta nomear os diretorios com esse prefixo:
+
+```
+/opt/unetlab/addons/qemu/
+├── ciscosw-1.0/                 (imagem historica)
+├── ciscosw-swrb-aprimorado/     (versao intermediaria)
+└── ciscosw-swrb-v2/             (versao atual — alvo do deploy.sh)
 ```
 
 ### Atualizar o CLI (deploy)

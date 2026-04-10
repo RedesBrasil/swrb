@@ -2,7 +2,7 @@
 # Deploy: injeta arquivos do swrb-v2 na imagem qcow2
 set -e
 
-IMAGE=/opt/unetlab/addons/qemu/swrb-v2/virtioa.qcow2
+IMAGE=/opt/unetlab/addons/qemu/ciscosw-swrb-v2/virtioa.qcow2
 SRC=/root/swrb-v2/switchcli
 
 echo "[1/3] Injetando arquivos na imagem..."

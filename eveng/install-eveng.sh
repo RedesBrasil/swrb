@@ -13,11 +13,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATE_NAME="ciscosw"
 TEMPLATE_DIR="/opt/unetlab/html/templates/intel"
 CUSTOM_TEMPLATES="/opt/unetlab/html/includes/custom_templates.yml"
-IMAGE_DIR="/opt/unetlab/addons/qemu/${TEMPLATE_NAME}-1.0"
+# Imagem atual do SWRB. Outras imagens (ciscosw-1.0, ciscosw-swrb-aprimorado)
+# podem coexistir no mesmo diretorio pai; o EVE-NG lista todas que casam
+# com o padrao "ciscosw-*" no seletor de imagens do template.
+IMAGE_DIR="/opt/unetlab/addons/qemu/ciscosw-swrb-v2"
 IMAGE_FILE="virtioa.qcow2"
 
 echo "========================================="
-echo " Instalando CiscoSW no EVE-NG"
+echo " Instalando CiscoSW-L2 Switch no EVE-NG"
 echo "========================================="
 
 # 1. Verificar que estamos no EVE-NG
