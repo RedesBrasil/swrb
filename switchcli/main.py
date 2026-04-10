@@ -17,24 +17,22 @@ from cli.banner import print_banner
 from cli.engine import CLIEngine
 
 _MAX_LOGIN_ATTEMPTS = 3
+_DEFAULT_USER = "admin"
 
 
 def _do_login(config_store):
     """Exibe prompt de login estilo Cisco IOS.
 
-    Retorna True se autenticado (ou se nao ha usuarios configurados).
-    Encerra o processo apos _MAX_LOGIN_ATTEMPTS falhas.
+    Comportamento:
+    - Sem usuarios configurados: login com 'admin' + senha em branco.
+      Apos entrar, exibe aviso para configurar uma senha real.
+    - Com usuarios configurados: exige username e password validos.
+      3 tentativas invalidas encerram a sessao.
     """
-    if not config_store.local_users:
-        # Sem usuarios configurados — acesso direto (comportamento padrao Cisco)
-        print("\nPress RETURN to get started.\n")
-        try:
-            input()
-        except (EOFError, KeyboardInterrupt):
-            pass
-        return True
-
     print("\nUser Access Verification\n")
+
+    using_default = not config_store.local_users
+
     for attempt in range(1, _MAX_LOGIN_ATTEMPTS + 1):
         try:
             username = input("Username: ").strip()
@@ -43,8 +41,13 @@ def _do_login(config_store):
             print()
             sys.exit(0)
 
-        if config_store.verify_user(username, password):
-            return True
+        if using_default:
+            # Credenciais padrao de fabrica: admin / (sem senha)
+            if username == _DEFAULT_USER and password == "":
+                return True
+        else:
+            if config_store.verify_user(username, password):
+                return True
 
         print("% Login invalid")
         if attempt < _MAX_LOGIN_ATTEMPTS:
@@ -61,8 +64,15 @@ def main():
     print_banner()
     engine = CLIEngine()
 
-    # Login (antes do banner MOTD — comportamento Cisco)
+    # Login
     _do_login(engine.config_store)
+
+    # Aviso de credenciais padrao (sem senha configurada)
+    if not engine.config_store.local_users:
+        print()
+        print("% WARNING: No local users configured. Default credentials in use.")
+        print("%          Please set a password: username admin password <password>")
+        print()
 
     # Banner MOTD (se configurado)
     if engine.config_store.banner_motd:
