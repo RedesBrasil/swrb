@@ -17,8 +17,6 @@ DEFAULT_BANNER_MOTD = "\n".join([
     "#" + "DESENVOLVIDO POR:".center(53) + "#",
     "#" + "MATHEUS SALVADOR E FRANCISCO NETO".center(53) + "#",
     "#" + " " * 53 + "#",
-    "#" + "CO-AUTOR: CLAUDE (ANTHROPIC)".center(53) + "#",
-    "#" + " " * 53 + "#",
     "#" * 55,
 ])
 
